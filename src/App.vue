@@ -1,5 +1,15 @@
 <script setup lang="ts">
-import HelloWorld from './components/HelloWorld.vue'
+import {
+  computed,
+  ref
+} from 'vue'
+const name = 'Alexander'
+const company = ref<string>('Vite');
+const message = computed(() => `company name: ${company.value}`)
+setTimeout(() => {
+  company.value = 'new company'
+  console.log('App')
+})
 </script>
 
 <template>
