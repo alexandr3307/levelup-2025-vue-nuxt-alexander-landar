@@ -1,73 +1,141 @@
 <script setup lang="ts">
 import {
-  computed,
   onMounted,
-  ref,
+  useTemplateRef,
 } from 'vue';
-import {
-  default as Header,
-} from './mvc/view/TodoHeader.vue';
-import store from './store';
+
 import {
   TodoVO,
 } from './mvc/model/vo';
-const todo = ref<TodoVO | undefined>();
-onMounted(() => {
-  console.log('App onMounted');
-});
-const onInputKeyUpEnter = (event: KeyboardEvent) => {
-  const domInput = event.target as HTMLInputElement;
-  const inputText: string = domInput.value;
-  console.log('App -> onInputKeyUpEnter', {
-    event, inputText, 
-  });
-  const id = Date.now().toString();
-  const createdAt = new Date();
-  todo.value = new TodoVO(
-    id,
-    inputText,
-    createdAt,
-  );
+import {
+  LocalStorageKeys,
+} from './_shared/keys';
+import FormTodo from '~/mvc/view/components/form/FormTodo.vue';
+import TodoLast from '~/mvc/view/components/TodoLast.vue';
+import MainHeader from '~/mvc/view/components/header/MainHeader.vue';
+import TodoList from '~/mvc/view/components/TodoList.vue';
+import {
+  useTodoList,
+  useTodoLocalStorage,
+} from '~/mvc/model/composables';
+import TodoPageLayout from '~/mvc/view/components/layouts/TodoPageLayout.vue';
+
+const todoRaw = localStorage.getItem(LocalStorageKeys.TODO);
+const listRaw = localStorage.getItem(LocalStorageKeys.LIST);
+
+const {
+  saveListToLocalStorage,
+  saveTodoToLocalStorage,
+} = useTodoLocalStorage();
+
+const {
+  list,
+  lastTodo,
+  selectedTodo,
+  addLastTodoToList,
+  createTodoFromText,
+} = useTodoList(todoRaw, listRaw);
+
+const refFormTodo = useTemplateRef('domFormTodo');
+
+const processSaveTodoSuccess = (todoVO?: TodoVO) => {
+  console.log('> App -> processSaveTodoSuccess:');
+  lastTodo.value = todoVO;
 };
+
+const processSaveTodoError = (error: Error) => {
+  console.log('> App -> processSaveTodoError:');
+  console.log(error);
+};
+
+const onFormCreate = (text: string) => {
+  console.log('> App -> onFormCreate:', {
+    text,
+  });
+  createTodoFromText(text)
+    .then((todo) => saveTodoToLocalStorage(todo)
+      .then(processSaveTodoSuccess)
+      .catch(processSaveTodoError),
+    )
+    .then(addLastTodoToList)
+    .then((list) => saveListToLocalStorage(list)
+      .then(() => {})
+      .catch(() => {}),
+    )
+    .finally(() => {
+      refFormTodo.value?.clear();
+    });
+};
+
+const onFormEdit = (text: string) => {
+  console.log('> App -> onFormEdit:', {
+    text,
+  });
+  if (!selectedTodo.value) { return; }
+
+  selectedTodo.value.text = text;
+  saveListToLocalStorage(list.value)
+    .then(() => {})
+    .catch(() => {})
+    .finally(() => {
+      selectedTodo.value = undefined;
+      refFormTodo.value?.clear();
+    });
+};
+
+const onListTodoEdit = (todoId: string) => {
+  console.log('> App -> onListTodoEdit:', {
+    todoId,
+  });
+  const todoVO = list.value.find(vo => vo.id === todoId);
+  if (todoVO) {
+    selectedTodo.value = todoVO;
+    console.log('> \t find:', todoVO);
+  }
+};
+
+const onListTodoDelete = (todoId: string) => {
+  console.log('> App -> onListTodoDelete:', {
+    todoId,
+  });
+  const todoIndex = list.value.findIndex(vo => vo.id === todoId);
+  if (todoIndex >= 0) {
+    list.value.splice(todoIndex, 1);
+    saveListToLocalStorage(list.value);
+  }
+  if (lastTodo.value?.id === todoId) {
+    lastTodo.value = undefined;
+    saveTodoToLocalStorage(undefined);
+  }
+  if (selectedTodo.value?.id === todoId) {
+    selectedTodo.value = undefined;
+  }
+};
+
+onMounted(() => {
+  console.log('> App -> onMounted');
+});
 </script>
 
 <template>
-  <div class="flex flex-col items-center justify-start h-full">
-    <Header />
-    <div class="flex flex-col w-full justify-center items-center">
-      <fieldset class="fieldset flex flex-col items-center justify-center">
-        <legend class="fieldset-legend w-full justify-center">
-          Введите что хотите сделать
-        </legend>
-        <input
-          class="input"
-          placeholder="Type here"
-          type="text"
-          @keyup.enter="onInputKeyUpEnter"
-        >
-        <p class="fieldset-label">
-          Для создания нажмите enter
-        </p>
-      </fieldset>
-    </div>
-    <div class="flex flex-col justify-start items-start w-sm">
-      <span>Созданная задача:</span>
-      <div v-if="todo" class="flex flex-col bg-base-200 px-3 pb-2 pt-1 rounded-xl">
-        <span class="break-normal">
-          {{ todo.text }}
-        </span>
-        <span class="text-xs">
-          {{ todo.createdAt }}
-        </span>
-      </div>
-      <div v-else>
-        <span class="text-info">
-          Не задано
-        </span>
-      </div>
-    </div>
+  <div class="flex flex-col justify-start items-center h-full">
+    <MainHeader />
+    <TodoPageLayout>
+      <FormTodo
+        ref="domFormTodo"
+        :selected-todo="selectedTodo"
+        @create="onFormCreate"
+        @edit="onFormEdit"
+      />
+      <TodoLast :todo="lastTodo" />
+      <template #list>
+        <TodoList
+          :list="list"
+          :selected-todo="selectedTodo"
+          @delete="onListTodoDelete"
+          @edit="onListTodoEdit"
+        />
+      </template>
+    </TodoPageLayout>
   </div>
 </template>
-
-<style scoped>
-</style>
